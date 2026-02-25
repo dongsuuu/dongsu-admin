@@ -4,8 +4,12 @@ import AgentCard from './components/AgentCard'
 import CommandPanel from './components/CommandPanel'
 import ActivityLog from './components/ActivityLog'
 import ChartPanel from './components/ChartPanel'
+import { getStatus, analyzeSymbol } from './api/client'
 
 function App() {
+  const [apiStatus, setApiStatus] = useState(null)
+  const [loading, setLoading] = useState(true)
+  
   const [agents, setAgents] = useState([
     {
       id: 'trading',
@@ -14,12 +18,7 @@ function App() {
       status: 'running',
       statusText: '실행 중',
       description: 'BTC/ETH 레버리지 트레이딩',
-      stats: {
-        trades: 1,
-        winRate: '100%',
-        profit: '+$42',
-        leverage: '1-10x'
-      },
+      stats: { trades: 1, winRate: '100%', profit: '+$42', leverage: '1-10x' },
       lastActivity: '10분 전',
       color: 'blue'
     },
@@ -30,12 +29,7 @@ function App() {
       status: 'idle',
       statusText: '대기 중',
       description: '프로젝트/에어드랍 조사',
-      stats: {
-        projects: 0,
-        reports: 0,
-        sources: 3,
-        lastScan: '-'
-      },
+      stats: { projects: 0, reports: 0, sources: 3, lastScan: '-' },
       lastActivity: '1시간 전',
       color: 'purple'
     },
@@ -46,12 +40,7 @@ function App() {
       status: 'running',
       statusText: '실행 중',
       description: 'Dune/Etherscan 분석',
-      stats: {
-        gasPrice: '25 Gwei',
-        whaleAlerts: 2,
-        chain: 'Base',
-        monitoring: 'ETH'
-      },
+      stats: { gasPrice: '25 Gwei', whaleAlerts: 2, chain: 'Base', monitoring: 'ETH' },
       lastActivity: '5분 전',
       color: 'orange'
     }
@@ -65,7 +54,23 @@ function App() {
     { time: '10:00', agent: '시스템', action: '모든 에이전트 활성화', type: 'success' }
   ])
 
-  const executeCommand = (command, agentId) => {
+  // API에서 데이터 가져오기
+  useEffect(() => {
+    async function fetchData() {
+      const status = await getStatus()
+      if (status) {
+        setApiStatus(status)
+        setLoading(false)
+      }
+    }
+    fetchData()
+    
+    // 30초마다 갱신
+    const interval = setInterval(fetchData, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const executeCommand = async (command, agentId) => {
     const newLog = {
       time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
       agent: agentId || '사용자',
@@ -73,6 +78,19 @@ function App() {
       type: 'info'
     }
     setLogs(prev => [newLog, ...prev])
+    
+    // API 호출
+    if (command === 'analyze') {
+      const result = await analyzeSymbol('ETH')
+      if (result) {
+        setLogs(prev => [{
+          time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          agent: 'API',
+          action: `${result.symbol} 분석 완료 - 가격: $${result.price}`,
+          type: 'success'
+        }, ...prev])
+      }
+    }
   }
 
   const addAgent = () => {
@@ -91,6 +109,12 @@ function App() {
     executeCommand('새 에이전트 추가됨', '시스템')
   }
 
+  // API 데이터로 요약 정보 업데이트
+  const summaryData = apiStatus || {
+    capital: { current: 10000, change: 0, change_percent: 0 },
+    trades: { total: 0, win_rate: 0 }
+  }
+
   return (
     <div className="min-h-screen bg-bg-primary text-white">
       {/* 헤더 */}
@@ -101,8 +125,8 @@ function App() {
             <h1 className="text-xl font-bold bg-gradient-to-r from-accent-blue to-purple-500 bg-clip-text text-transparent">
               dongsu 관리 센터
             </h1>
-            <span className="px-2 py-1 bg-accent-green/20 text-accent-green text-xs rounded-full">
-              ● 시스템 정상
+            <span className={`px-2 py-1 text-xs rounded-full ${loading ? 'bg-yellow-500/20 text-yellow-500' : 'bg-accent-green/20 text-accent-green'}`}>
+              {loading ? '● API 연결 중...' : '● API 연결됨'}
             </span>
           </div>
           <div className="flex gap-3">
@@ -161,21 +185,28 @@ function App() {
 
         {/* 메인 콘텐츠 */}
         <main className="flex-1 p-6">
-          {/* 상단 요약 */}
+          {/* 상단 요약 - API 데이터 연동 */}
           <div className="grid grid-cols-4 gap-4 mb-6">
             <div className="bg-bg-secondary border border-border rounded-xl p-4">
               <div className="text-gray-400 text-sm mb-1">현재 자본</div>
-              <div className="text-2xl font-bold font-mono">$10,042</div>
-              <div className="text-accent-green text-sm">+$42 (+0.42%)</div>
+              <div className="text-2xl font-bold font-mono">
+                ${summaryData.capital?.current?.toLocaleString() || '10,000'}
+              </div>
+              <div className={`text-sm ${summaryData.capital?.change >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
+                {summaryData.capital?.change >= 0 ? '+' : ''}{summaryData.capital?.change || 0} 
+                ({summaryData.capital?.change_percent >= 0 ? '+' : ''}{summaryData.capital?.change_percent || 0}%)
+              </div>
             </div>
             <div className="bg-bg-secondary border border-border rounded-xl p-4">
               <div className="text-gray-400 text-sm mb-1">승률</div>
-              <div className="text-2xl font-bold font-mono">100%</div>
-              <div className="text-gray-400 text-sm">1승 0패</div>
+              <div className="text-2xl font-bold font-mono">{summaryData.trades?.win_rate || 0}%</div>
+              <div className="text-gray-400 text-sm">
+                {summaryData.trades?.winning || 0}승 {summaryData.trades?.losing || 0}패
+              </div>
             </div>
             <div className="bg-bg-secondary border border-border rounded-xl p-4">
               <div className="text-gray-400 text-sm mb-1">총 거래</div>
-              <div className="text-2xl font-bold font-mono">1</div>
+              <div className="text-2xl font-bold font-mono">{summaryData.trades?.total || 0}</div>
               <div className="text-gray-400 text-sm">Paper Trading</div>
             </div>
             <div className="bg-bg-secondary border border-border rounded-xl p-4">
@@ -189,7 +220,7 @@ function App() {
           <div className="grid grid-cols-3 gap-6">
             {/* 차트 패널 */}
             <div className="col-span-2">
-              <ChartPanel />
+              <ChartPanel apiStatus={apiStatus} />
             </div>
 
             {/* 우측 패널 */}
