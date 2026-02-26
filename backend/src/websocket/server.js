@@ -5,12 +5,20 @@ const clients = new Map();
 
 function setupWebSocket(server) {
   const wss = new WebSocket.Server({ 
-    server
-    // path 제거 - 루트에서 WS 처리
+    noServer: true  // Handle upgrade manually
+  });
+  
+  // Handle upgrade manually
+  server.on('upgrade', (request, socket, head) => {
+    console.log('Upgrade request:', request.url);
+    
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
   });
   
   wss.on('connection', async (ws, req) => {
-    console.log('Client connected');
+    console.log('Client connected from:', req.headers.origin);
     clients.set(ws, { subscriptions: {}, authed: false });
     
     // Send hello
@@ -27,16 +35,13 @@ function setupWebSocket(server) {
         
         switch (msg.type) {
           case 'auth':
-            // P0: optional auth
             client.authed = true;
             ws.send(JSON.stringify({ type: 'auth_ok' }));
             break;
             
           case 'subscribe':
-            // Store subscriptions
             client.subscriptions = msg.filters || {};
             
-            // Fetch backlog based on priority: last_event_id > after_ts > since
             const params = {
               limit: msg.limit || 200,
               types: msg.filters?.types,
@@ -54,7 +59,6 @@ function setupWebSocket(server) {
             
             const events = await listEvents(params);
             
-            // Send backlog
             ws.send(JSON.stringify({
               type: 'init',
               events: events,
@@ -94,35 +98,36 @@ function setupWebSocket(server) {
   return wss;
 }
 
-// Broadcast event to all subscribers
 async function broadcastEvent(event) {
   const message = JSON.stringify({
     type: 'event',
     payload: event
   });
   
-  clients.forEach((client, ws) => {
-    if (ws.readyState !== WebSocket.OPEN) return;
-    
-    const { subscriptions } = client;
-    
-    // Filter by type
-    if (subscriptions.types?.length > 0) {
-      if (!subscriptions.types.includes(event.type)) return;
-    }
-    
-    // Filter by actor
-    if (subscriptions.actors?.length > 0) {
-      if (!subscriptions.actors.includes(event.actor_id)) return;
-    }
-    
-    // Filter by thread
-    if (subscriptions.thread_id) {
-      if (event.thread_id !== subscriptions.thread_id) return;
-    }
-    
-    ws.send(message);
-  });
+  // Get all clients from all wss instances
+  // This is a workaround since we don't export wss
+  // We'll use a global approach
+  if (global.wssClients) {
+    global.wssClients.forEach((clientInfo, ws) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      
+      const { subscriptions } = clientInfo;
+      
+      if (subscriptions.types?.length > 0) {
+        if (!subscriptions.types.includes(event.type)) return;
+      }
+      
+      if (subscriptions.actors?.length > 0) {
+        if (!subscriptions.actors.includes(event.actor_id)) return;
+      }
+      
+      if (subscriptions.thread_id) {
+        if (event.thread_id !== subscriptions.thread_id) return;
+      }
+      
+      ws.send(message);
+    });
+  }
 }
 
 module.exports = {
