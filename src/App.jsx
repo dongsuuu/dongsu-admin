@@ -90,6 +90,26 @@ function App() {
           type: 'success'
         }, ...prev])
       }
+    } else if (command === 'positions') {
+      const result = await getPositions()
+      if (result) {
+        setLogs(prev => [{
+          time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          agent: 'API',
+          action: `포지션 ${result.count}개 확인`,
+          type: 'success'
+        }, ...prev])
+      }
+    } else if (command === 'status') {
+      const result = await getStatus()
+      if (result) {
+        setLogs(prev => [{
+          time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          agent: 'API',
+          action: `자본: $${result.capital?.current}, 승률: ${result.trades?.win_rate}%`,
+          type: 'success'
+        }, ...prev])
+      }
     }
   }
 
