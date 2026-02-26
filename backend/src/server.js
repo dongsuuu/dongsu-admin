@@ -12,9 +12,10 @@ const server = http.createServer(app);
 setupWebSocket(server);
 
 app.use(cors({
-  origin: '*',
+  origin: ['https://dongsu-admin.onrender.com', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 app.use(express.json());
 

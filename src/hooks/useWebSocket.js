@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'wss://dongsu-admin-ws.onrender.com';
+const WS_URL = import.meta.env.VITE_WS_URL || 'wss://dongsu-admin-ws.onrender.com/ws';
 
 export function useWebSocket(filters = {}) {
   const [connected, setConnected] = useState(false);
@@ -93,7 +93,7 @@ export function useWebSocket(filters = {}) {
   }, [connect]);
 
   const sendCommand = useCallback(async (toAgentId, text) => {
-    const API_URL = import.meta.env.VITE_API_URL || 'https://dongsu-admin-ws.onrender.com';
+    const API_URL = import.meta.env.VITE_API_BASE || 'https://dongsu-admin-ws.onrender.com';
     
     const res = await fetch(`${API_URL}/api/commands`, {
       method: 'POST',

@@ -4,7 +4,10 @@ const { listEvents, createEvent } = require('./eventService');
 const clients = new Map();
 
 function setupWebSocket(server) {
-  const wss = new WebSocket.Server({ server });
+  const wss = new WebSocket.Server({ 
+    server,
+    path: '/ws'  // ✅ path 고정
+  });
   
   wss.on('connection', async (ws, req) => {
     console.log('Client connected');
