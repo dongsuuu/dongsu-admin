@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'wss://dongsu-admin-ws.onrender.com/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || 'wss://dongsu-admin-ws.onrender.com';
 
 export function useWebSocket(filters = {}) {
   const [connected, setConnected] = useState(false);

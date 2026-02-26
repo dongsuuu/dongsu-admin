@@ -5,8 +5,8 @@ const clients = new Map();
 
 function setupWebSocket(server) {
   const wss = new WebSocket.Server({ 
-    server,
-    path: '/ws'  // ✅ path 고정
+    server
+    // path 제거 - 루트에서 WS 처리
   });
   
   wss.on('connection', async (ws, req) => {
