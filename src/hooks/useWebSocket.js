@@ -106,3 +106,9 @@ export function useWebSocket(filters = {}) {
 
   return { connected, events, sendCommand, reconnecting };
 }
+
+export async function getAgents() {
+  const API_URL = import.meta.env.VITE_API_URL || 'https://dongsu-admin-ws.onrender.com';
+  const res = await fetch(`${API_URL}/api/agents`);
+  return res.json();
+}
