@@ -1,33 +1,35 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const WS_URL = process.env.REACT_APP_WS_URL || 'wss://dongsu-admin-ws.onrender.com';
-const API_URL = process.env.REACT_APP_API_URL || 'https://dongsu-admin-ws.onrender.com';
+const WS_URL = import.meta.env.VITE_WS_URL || 'wss://dongsu-admin-ws.onrender.com';
 
-export function useWebSocket() {
+export function useWebSocket(filters = {}) {
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState([]);
   const [reconnecting, setReconnecting] = useState(false);
   const wsRef = useRef(null);
-  const lastEventIdRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const reconnectAttemptRef = useRef(0);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
     
+    setReconnecting(true);
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
-    setReconnecting(true);
 
     ws.onopen = () => {
-      console.log('WebSocket 연결됨');
+      console.log('WS connected');
       setConnected(true);
       setReconnecting(false);
+      reconnectAttemptRef.current = 0;
       
-      // 구독 요청 (커서 기반)
+      // Get last_event_id from localStorage
+      const lastEventId = localStorage.getItem('last_event_id');
+      
       ws.send(JSON.stringify({
         type: 'subscribe',
-        last_event_id: lastEventIdRef.current,
-        filters: {}
+        filters,
+        last_event_id: lastEventId || undefined
       }));
     };
 
@@ -36,48 +38,50 @@ export function useWebSocket() {
         const data = JSON.parse(event.data);
         
         if (data.type === 'init') {
-          // 초기 이벤트 로드
           setEvents(data.events);
           if (data.events.length > 0) {
-            lastEventIdRef.current = data.events[data.events.length - 1].id;
+            const lastId = data.events[data.events.length - 1].id;
+            localStorage.setItem('last_event_id', lastId);
           }
         } else if (data.type === 'event') {
-          // 실시간 이벤트
           setEvents(prev => {
+            // Dedupe by id
+            if (prev.some(e => e.id === data.payload.id)) {
+              return prev;
+            }
             const newEvents = [...prev, data.payload];
-            // 최대 500개 유지
             if (newEvents.length > 500) {
               return newEvents.slice(-500);
             }
             return newEvents;
           });
-          lastEventIdRef.current = data.payload.id;
+          localStorage.setItem('last_event_id', data.payload.id);
         }
       } catch (error) {
-        console.error('메시지 파싱 오류:', error);
+        console.error('Message parse error:', error);
       }
     };
 
     ws.onclose = () => {
-      console.log('WebSocket 연결 종료');
       setConnected(false);
       wsRef.current = null;
       
-      // 자동 재연결
+      // Exponential backoff
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttemptRef.current), 30000);
+      reconnectAttemptRef.current++;
+      
       reconnectTimeoutRef.current = setTimeout(() => {
-        console.log('재연결 시도...');
         connect();
-      }, 3000);
+      }, delay);
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket 오류:', error);
+      console.error('WS error:', error);
     };
-  }, []);
+  }, [filters]);
 
   useEffect(() => {
     connect();
-    
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -88,62 +92,17 @@ export function useWebSocket() {
     };
   }, [connect]);
 
-  // 수동 재연결
-  const reconnect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-    connect();
-  }, [connect]);
-
   const sendCommand = useCallback(async (toAgentId, text) => {
-    try {
-      const response = await fetch(`${API_URL}/api/commands`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to_agent_id: toAgentId,
-          text,
-          thread_id: `thread-${Date.now()}`
-        })
-      });
-      return await response.json();
-    } catch (error) {
-      console.error('명령 전송 실패:', error);
-      throw error;
-    }
+    const API_URL = import.meta.env.VITE_API_URL || 'https://dongsu-admin-ws.onrender.com';
+    
+    const res = await fetch(`${API_URL}/api/commands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to_agent_id: toAgentId, text })
+    });
+    
+    return res.json();
   }, []);
 
-  return { 
-    connected, 
-    events, 
-    sendCommand, 
-    reconnect, 
-    reconnecting,
-    lastEventId: lastEventIdRef.current 
-  };
-}
-
-export async function getAgents() {
-  try {
-    const response = await fetch(`${API_URL}/api/agents`);
-    return await response.json();
-  } catch (error) {
-    console.error('에이전트 조회 실패:', error);
-    return { agents: [] };
-  }
-}
-
-export async function getEvents(cursor, limit = 100) {
-  try {
-    const params = new URLSearchParams();
-    if (cursor) params.append('after_id', cursor);
-    params.append('limit', limit.toString());
-    
-    const response = await fetch(`${API_URL}/api/events?${params}`);
-    return await response.json();
-  } catch (error) {
-    console.error('이벤트 조회 실패:', error);
-    return { events: [] };
-  }
+  return { connected, events, sendCommand, reconnecting };
 }
