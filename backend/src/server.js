@@ -8,9 +8,7 @@ const { createEvent, listEvents } = require('./services/eventService');
 const app = express();
 const server = http.createServer(app);
 
-// Setup WebSocket
-setupWebSocket(server);
-
+// CORS must come BEFORE WebSocket
 app.use(cors({
   origin: ['https://dongsu-admin.onrender.com', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -18,6 +16,9 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+
+// Setup WebSocket AFTER cors
+setupWebSocket(server);
 
 // Health check
 app.get('/health', (req, res) => {
