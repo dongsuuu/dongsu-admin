@@ -1,14 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
-const { setupWebSocket, broadcastEvent } = require('./websocket/server');
 const { createEvent, listEvents } = require('./services/eventService');
 
 const app = express();
 const server = http.createServer(app);
 
-// CORS must come BEFORE WebSocket
+// CORS
 app.use(cors({
   origin: ['https://dongsu-admin.onrender.com', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -17,12 +17,61 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Setup WebSocket AFTER cors
-setupWebSocket(server);
+// Socket.IO setup
+const io = new Server(server, {
+  cors: {
+    origin: ['https://dongsu-admin.onrender.com', 'http://localhost:5173'],
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
+
+// Socket connection handling
+io.on('connection', async (socket) => {
+  console.log('Client connected:', socket.id);
+  
+  // Send hello
+  socket.emit('hello', {
+    server_time: new Date().toISOString(),
+    version: 'P0'
+  });
+  
+  // Handle subscribe
+  socket.on('subscribe', async (data) => {
+    const { filters, last_event_id, after_ts } = data;
+    
+    const params = {
+      limit: 200,
+      types: filters?.types,
+      actor_ids: filters?.actors,
+      thread_id: filters?.thread_id
+    };
+    
+    if (last_event_id) {
+      params.after_id = last_event_id;
+    } else if (after_ts) {
+      params.after_ts = after_ts;
+    } else if (filters?.since) {
+      params.since = filters.since;
+    }
+    
+    const events = await listEvents(params);
+    socket.emit('init', { events, count: events.length });
+  });
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
+// Broadcast function
+async function broadcastEvent(event) {
+  io.emit('event', event);
+}
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: 'P0' });
+  res.json({ status: 'ok', version: 'P0-socketio' });
 });
 
 // POST /api/commands
@@ -44,7 +93,7 @@ app.post('/api/commands', async (req, res) => {
     
     await broadcastEvent(event);
     
-    // Trigger stub agent response
+    // Stub agent response
     setTimeout(async () => {
       const responses = {
         'trading': ['ETH 차트 분석 중... RSI 65', '볼린저 밴드 상단 접근', '5x 롱 고려'],
@@ -136,5 +185,5 @@ app.get('/api/approvals', async (req, res) => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Server: http://localhost:${PORT}`);
-  console.log(`WebSocket: ws://localhost:${PORT}`);
+  console.log(`Socket.IO: ws://localhost:${PORT}`);
 });
