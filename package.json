@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "vite preview --port $PORT --host"
+    "start": "serve -s dist -l $PORT"
   },
   "keywords": [],
   "author": "dongsu",
@@ -20,6 +20,7 @@
     "postcss": "^8.5.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "serve": "^14.2.5",
     "tailwindcss": "^4.2.1",
     "vite": "^7.3.1"
   }
