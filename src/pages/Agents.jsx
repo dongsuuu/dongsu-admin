@@ -1,256 +1,185 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { getAgents, executeCommand } from '../api/client'
+import React, { useState, useEffect, useRef } from 'react';
+import { useWebSocket, getAgents } from '../hooks/useWebSocket';
+import ChatBubble from '../components/ChatBubble';
 
 function Agents() {
-  const [agents, setAgents] = useState([])
-  const [selectedAgent, setSelectedAgent] = useState(null)
-  const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const messagesEndRef = useRef(null)
+  const { connected, events, sendCommand } = useWebSocket();
+  const [agents, setAgents] = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    loadAgents()
-    const interval = setInterval(loadAgents, 5000)
-    return () => clearInterval(interval)
-  }, [])
+    loadAgents();
+  }, []);
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    scrollToBottom();
+  }, [events]);
 
   async function loadAgents() {
-    const data = await getAgents()
-    if (data) setAgents(data.agents || [])
+    const data = await getAgents();
+    setAgents(data.agents || []);
   }
 
   function scrollToBottom() {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }
 
-  function addMessage(sender, text, type = 'text') {
-    setMessages(prev => [...prev, {
-      id: Date.now(),
-      sender,
-      text,
-      type,
-      time: new Date().toLocaleTimeString('ko-KR')
-    }])
-  }
+  async function handleSend(e) {
+    e.preventDefault();
+    if (!input.trim() || !selectedAgent) return;
 
-  async function handleSend() {
-    if (!input.trim() || !selectedAgent) return
-
-    const userMessage = input.trim()
-    addMessage('사용자', userMessage)
-    setInput('')
-    setLoading(true)
-
-    // 명령어 파싱
-    const command = parseCommand(userMessage)
-    
+    setLoading(true);
     try {
-      addMessage(selectedAgent.name, '명령 실행 중...', 'typing')
-      
-      const result = await executeCommand(command.action, selectedAgent.id, command.params)
-      
-      // 타이핑 메시지 제거
-      setMessages(prev => prev.filter(m => m.type !== 'typing'))
-      
-      // 결과 표시
-      addMessage(selectedAgent.name, formatResult(result), 'result')
-      
-      // 에이전트 상태 갱신
-      await loadAgents()
-      
+      await sendCommand(selectedAgent.id, input);
+      setInput('');
     } catch (error) {
-      setMessages(prev => prev.filter(m => m.type !== 'typing'))
-      addMessage('시스템', `오류: ${error.message}`, 'error')
+      console.error('전송 실패:', error);
     }
-    
-    setLoading(false)
+    setLoading(false);
   }
 
-  function parseCommand(text) {
-    const lower = text.toLowerCase()
-    
-    if (lower.includes('분석') || lower.includes('analyze')) {
-      return { action: 'analyze', params: { symbol: 'ETH' } }
-    }
-    if (lower.includes('매매') || lower.includes('trade')) {
-      return { action: 'trade', params: { symbol: 'ETH' } }
-    }
-    if (lower.includes('포지션') || lower.includes('position')) {
-      return { action: 'positions' }
-    }
-    if (lower.includes('상태') || lower.includes('status')) {
-      return { action: 'status' }
-    }
-    if (lower.includes('중지') || lower.includes('pause')) {
-      return { action: 'pause' }
-    }
-    if (lower.includes('시작') || lower.includes('restart')) {
-      return { action: 'restart' }
-    }
-    
-    return { action: 'chat', params: { message: text } }
-  }
-
-  function formatResult(result) {
-    if (!result) return '결과 없음'
-    return JSON.stringify(result.result, null, 2)
-  }
-
-  // 퀵 명령 버튼
+  // 퀵 명령
   const quickCommands = [
-    { label: '시장 분석', cmd: 'analyze', icon: '📊' },
-    { label: '포지션 확인', cmd: 'positions', icon: '📋' },
-    { label: '상태 확인', cmd: 'status', icon: '✅' },
-    { label: '일시 중지', cmd: 'pause', icon: '⏸️' },
-  ]
+    { label: '시장 분석', text: 'ETH 차트 분석해줘' },
+    { label: '포지션 확인', text: '현재 포지션 알려줘' },
+    { label: '상태 확인', text: '네 상태는?' },
+    { label: '학습 중?', text: '지금 뭐 학습하고 있어?' }
+  ];
 
   async function handleQuickCommand(cmd) {
-    if (!selectedAgent) {
-      addMessage('시스템', '에이전트를 먼저 선택하세요', 'error')
-      return
-    }
-    
-    addMessage('사용자', `[퀵 명령] ${cmd.label}`)
-    setLoading(true)
-    
+    if (!selectedAgent) return;
+    setLoading(true);
     try {
-      addMessage(selectedAgent.name, '처리 중...', 'typing')
-      const result = await executeCommand(cmd.cmd, selectedAgent.id)
-      setMessages(prev => prev.filter(m => m.type !== 'typing'))
-      addMessage(selectedAgent.name, formatResult(result), 'result')
-      await loadAgents()
+      await sendCommand(selectedAgent.id, cmd.text);
     } catch (error) {
-      setMessages(prev => prev.filter(m => m.type !== 'typing'))
-      addMessage('시스템', `오류: ${error.message}`, 'error')
+      console.error('전송 실패:', error);
     }
-    
-    setLoading(false)
+    setLoading(false);
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-gray-100">
       {/* 왼쪽: 에이전트 목록 */}
       <div className="w-64 bg-white border-r p-4">
-        <h2 className="text-lg font-bold mb-4">에이전트 목록</h2>
-        <div className="space-y-2">
+        <h2 className="text-lg font-bold mb-4">🤖 에이전트 학교</h2>
+        
+        <div className="space-y-3">
           {agents.map(agent => (
             <button
               key={agent.id}
               onClick={() => setSelectedAgent(agent)}
-              className={`w-full p-3 rounded-lg text-left transition ${
-                selectedAgent?.id === agent.id 
-                  ? 'bg-blue-100 border-blue-500 border' 
-                  : 'bg-gray-50 hover:bg-gray-100'
+              className={`w-full p-4 rounded-xl border-2 transition text-left ${
+                selectedAgent?.id === agent.id
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-blue-300'
               }`}
             >
-              <div className="font-medium">{agent.name}</div>
-              <div className={`text-sm ${
-                agent.status === 'running' ? 'text-green-600' : 'text-gray-500'
-              }`}>
-                {agent.status === 'running' ? '● 실행 중' : '○ 대기 중'}
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">{agent.icon}</span>
+                <div>
+                  <div className="font-bold">{agent.name}</div>
+                  <div className={`text-sm ${
+                    agent.status === 'active' ? 'text-green-600' : 'text-gray-500'
+                  }`}>
+                    {agent.status === 'active' ? '● 활동 중' : '○ 대기 중'}
+                  </div>
+                </div>
               </div>
             </button>
           ))}
         </div>
+
+        <div className="mt-6 p-4 bg-gray-50 rounded-xl">
+          <div className="text-sm text-gray-600 mb-2">WebSocket 상태</div>
+          <div className={`flex items-center gap-2 ${connected ? 'text-green-600' : 'text-red-600'}`}>
+            <span className="w-2 h-2 rounded-full bg-current animate-pulse"></span>
+            {connected ? '실시간 연결됨' : '연결 끊김'}
+          </div>
+        </div>
       </div>
 
-      {/* 오른쪽: 채팅 + 명령 */}
+      {/* 오른쪽: 채팅 */}
       <div className="flex-1 flex flex-col">
         {selectedAgent ? (
           <>
             {/* 헤더 */}
             <div className="bg-white border-b p-4">
               <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="text-lg font-bold">{selectedAgent.name}</h3>
-                  <p className="text-gray-600">{selectedAgent.description || 'AI 에이전트'}</p>
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">{selectedAgent.icon}</span>
+                  <div>
+                    <h3 className="text-lg font-bold">{selectedAgent.name}</h3>
+                    <p className="text-gray-600">클릭해서 대화를 시작하세요</p>
+                  </div>
                 </div>
+                
                 <div className="flex gap-2">
-                  {quickCommands.map(cmd => (
+                  {quickCommands.map((cmd, idx) => (
                     <button
-                      key={cmd.cmd}
+                      key={idx}
                       onClick={() => handleQuickCommand(cmd)}
                       disabled={loading}
-                      className="px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-sm disabled:opacity-50"
+                      className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50 text-sm"
                     >
-                      {cmd.icon} {cmd.label}
+                      {cmd.label}
                     </button>
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* 채팅 영역 */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-              {messages.length === 0 && (
-                <div className="text-center text-gray-400 mt-8">
-                  💬 {selectedAgent.name}에게 명령을 날려보세요!
-                  <br />
-                  예: "ETH 분석해줘", "포지션 확인", "상태 알려줘"
+            {/* 메시지 영역 */}
+            <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+              {events.length === 0 && (
+                <div className="text-center text-gray-400 mt-20">
+                  <div className="text-6xl mb-4">💬</div>
+                  <p className="text-lg">{selectedAgent.name}와 대화를 시작핼보세요!</p>
+                  <p className="text-sm mt-2">예: "ETH 분석해줘", "지금 뭐 하고 있어?"</p>
                 </div>
               )}
               
-              {messages.map(msg => (
-                <div
-                  key={msg.id}
-                  className={`flex ${
-                    msg.sender === '사용자' ? 'justify-end' : 'justify-start'
-                  }`}
-                >
-                  <div
-                    className={`max-w-lg p-3 rounded-lg ${
-                      msg.sender === '사용자'
-                        ? 'bg-blue-500 text-white'
-                        : msg.type === 'error'
-                        ? 'bg-red-100 text-red-800'
-                        : msg.type === 'result'
-                        ? 'bg-green-100 text-green-800 font-mono text-sm'
-                        : 'bg-white border'
-                    }`}
-                  >
-                    <div className="text-xs opacity-75 mb-1">{msg.sender} · {msg.time}</div>
-                    <div className="whitespace-pre-wrap">{msg.text}</div>
-                  </div>
-                </div>
+              {events.map(event => (
+                <ChatBubble key={event.id} event={event} />
               ))}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* 입력 영역 */}
-            <div className="bg-white border-t p-4">
-              <div className="flex gap-2">
+            {/* 입력 */}
+            <form onSubmit={handleSend} className="bg-white border-t p-4">
+              <div className="flex gap-3">
                 <input
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                  placeholder={`${selectedAgent.name}에게 명령 입력...`}
-                  disabled={loading}
-                  className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder={`${selectedAgent.name}에게 메시지...`}
+                  disabled={loading || !connected}
+                  className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
                 />
                 <button
-                  onClick={handleSend}
-                  disabled={loading || !input.trim()}
-                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+                  type="submit"
+                  disabled={loading || !input.trim() || !connected}
+                  className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 disabled:opacity-50 font-medium"
                 >
-                  {loading ? '실행 중...' : '전송'}
+                  {loading ? '전송 중...' : '전송'}
                 </button>
               </div>
-            </div>
+            </form>
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-400">
-            왼쪽에서 에이전트를 선택하세요
+            <div className="text-center">
+              <div className="text-6xl mb-4">🏫</div>
+              <p className="text-xl">왼쪽에서 에이전트를 선택하세요</p>
+              <p className="text-sm mt-2">각 에이전트는 특정 역할을 담당하고 있습니다</p>
+            </div>
           </div>
         )}
       </div>
     </div>
-  )
+  );
 }
 
-export default Agents
+export default Agents;
