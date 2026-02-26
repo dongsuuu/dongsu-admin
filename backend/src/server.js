@@ -8,13 +8,16 @@ const { createEvent, listEvents } = require('./services/eventService');
 const app = express();
 const server = http.createServer(app);
 
-// CORS
+// CORS - DEBUG
+console.log('Setting up CORS...');
 app.use(cors({
   origin: ['https://dongsu-admin.onrender.com', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+console.log('CORS setup complete');
+
 app.use(express.json());
 
 // Socket.IO setup
