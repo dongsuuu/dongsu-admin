@@ -11,7 +11,11 @@ const server = http.createServer(app);
 // Setup WebSocket
 setupWebSocket(server);
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Health check
