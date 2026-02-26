@@ -97,7 +97,13 @@ type EventType =
   | 'system.alert'
   | 'system.agent_registered'
   | 'system.budget_exceeded'
-  | 'system.rate_limited';
+  | 'system.rate_limited'
+  
+  // ✅ 추가: Approval events
+  | 'approval.requested'
+  | 'approval.approved'
+  | 'approval.rejected'
+  | 'approval.expired';
 ```
 
 ### 2.2 Agent Registry Model
@@ -308,7 +314,9 @@ WS /ws
     types: ['agent.message', 'trade.fill'],
     actors: ['trading_bot'],
     since: '2026-02-26T00:00:00Z'
-  }
+  },
+  last_event_id: 'evt_123',      // ✅ 추가: 커서 기반 재연결
+  after_ts: '2026-02-26T12:00:00Z'  // ✅ 추가: 타임스탬프 기반
 }
 
 // Send command
@@ -341,9 +349,11 @@ WS /ws
     id: 'evt_789',
     ts: '2026-02-26T12:34:56Z',
     type: 'agent.message',
-    actor: 'planner',
-    actor_id: 'planner',
-    payload: { text: 'Analysis complete: bullish signal' },
+    actor: 'agent',              // ✅ 수정: 'human' | 'agent' | 'system'
+    actor_id: 'planner',         // ✅ 수정: 구체적 ID
+    payload: { 
+      text: 'Analysis complete: bullish signal'  // ✅ 필수 필드
+    },
     thread_id: 'thread_123'
   }
 }
