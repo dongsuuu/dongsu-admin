@@ -10,7 +10,7 @@ export function useWebSocket(filters = {}) {
 
   useEffect(() => {
     const socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'], // Fallback to polling
+      transports: ['polling', 'websocket'], // polling 먼저!
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000
