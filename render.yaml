@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: dongsu-admin
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.0.0
